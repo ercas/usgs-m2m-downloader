@@ -20,7 +20,10 @@ import tqdm
 URL_BASE = "https://m2m.cr.usgs.gov/api/api/json/stable/{endpoint}"
 
 EE_USER_ENVIRONMENT_VAR = "EEUSER"
+
 EE_PASSWORD_ENVIRONMENT_VAR = "EEPASS"
+
+DEFAULT_CHUNK_SIZE = 5000
 
 
 # %% Class development
@@ -413,7 +416,7 @@ class M2MDownloader:
                                 scenes: typing.Iterable[dict],
                                 dataset_name: str,
                                 product_id: str,
-                                chunk_size: int = 100,
+                                chunk_size: int = DEFAULT_CHUNK_SIZE,
                                 *args, **kwargs):
         for i, chunk in enumerate(grouper(scenes, chunk_size)):
             logging.info("Downloading chunk {} (scenes {}-{})".format(
@@ -564,14 +567,22 @@ def main():
             product_id = downloader.get_product_id(
                 dataset_name=args.dataset_name, product_name=args.product_name
             )
-            downloader.download_scenes(
-                scenes=scenes,
-                dataset_name=args.dataset_name,
-                product_id=product_id
-            )
+            if args.chunk_size:
+                downloader.download_scenes_chunked(
+                    scenes=scenes,
+                    dataset_name=args.dataset_name,
+                    product_id=product_id,
+                    chunk_size=args.chunk_size
+                )
+            else:
+                downloader.download_scenes(
+                    scenes=scenes,
+                    dataset_name=args.dataset_name,
+                    product_id=product_id
+                )
 
         elif args.command == "count-scenes":
-            print("Total scenes after filtering: {}".format(sum(1 for scene in scenes)))
+            print("Total scenes after filtering: {}".format(sum(1 for _ in scenes)))
 
     logging.info("ALL OK")
 
