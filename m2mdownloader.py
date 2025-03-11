@@ -21,7 +21,7 @@ URL_BASE = "https://m2m.cr.usgs.gov/api/api/json/stable/{endpoint}"
 
 EE_USER_ENVIRONMENT_VAR = "EEUSER"
 
-EE_PASSWORD_ENVIRONMENT_VAR = "EEPASS"
+EE_TOKEN_ENVIRONMENT_VAR = "EETOKEN"
 
 DEFAULT_CHUNK_SIZE = 5000
 
@@ -96,24 +96,24 @@ class M2MDownloader:
 
     def __init__(self,
                  username: str,
-                 password: str,
+                 token: str,
                  output_dir: str = "output/",
                  cache_dir: str = "cache/"):
         """ Initialize M2MDownloader.
 
         Args:
             username: USGS Earth Explorer login username.
-            password: USGS Earth Explorer login password.
+            token: USGS Earth Explorer login token.
             output_dir: Directory where files should be saved to.
             cache_dir: Directory where the cache should be stored.
         """
 
         logging.info("Authenticating as {}".format(username))
         auth_request = requests.post(
-            self.API_URL_TEMPLATE.format(endpoint="login"),
+            self.API_URL_TEMPLATE.format(endpoint="login-token"),
             json={
                 "username": username,
-                "password": password
+                "token": token
             }
         )
         auth_request.raise_for_status()
@@ -441,9 +441,9 @@ def main():
             EE_USER_ENVIRONMENT_VAR)
     )
     parser.add_argument(
-        "-p", "--password",
-        help="USGS Earth explorer login password (will also check ${} prompt if not given)".format(
-            EE_PASSWORD_ENVIRONMENT_VAR)
+        "-t", "--token",
+        help="USGS Earth explorer login token (will also check ${} prompt if not given)".format(
+            EE_TOKEN_ENVIRONMENT_VAR)
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -485,6 +485,10 @@ def main():
             help="If specified, filter scenes such that scenes[].spatialCoverage intersects this geometry"
                  " (must be readable by GDAL; requires `shapely` and `fiona` to be installed)"
         )
+        subparser.add_argument(
+            "-r", "--regex",
+            help="If specified, filter scenes such that scenes[].entityId matches this regex"
+        )
 
     args = parser.parse_args()
 
@@ -494,10 +498,10 @@ def main():
             or input("USGS Earth Explorer username: ")
     ).strip()
 
-    password = (
-            args.password
-            or os.environ.get(EE_PASSWORD_ENVIRONMENT_VAR)
-            or getpass.getpass("USGS Earth Explorer password (will not echo): ")
+    token = (
+            args.token
+            or os.environ.get(EE_TOKEN_ENVIRONMENT_VAR)
+            or getpass.getpass("USGS Earth Explorer token (will not echo): ")
     ).strip()
 
     logging.basicConfig(
@@ -508,7 +512,7 @@ def main():
 
     downloader = M2MDownloader(
         username=username,
-        password=password
+        token=token
     )
 
     if args.command == "list-products":
@@ -544,23 +548,28 @@ def main():
             import fiona
             import shapely.geometry
             import shapely.ops
-
             with fiona.open(args.geo_intersects, "r") as f:
                 geo = [
                     shapely.geometry.shape(feature["geometry"])
                     for feature in f
                 ]
-
             if len(geo) == 1:
                 geo = geo[0]
             else:
                 logging.debug("Calculating unary union of {} geographies".format(len(geo)))
                 geo = shapely.ops.unary_union(geo)
-
             scenes = (
                 scene
                 for scene in scenes
                 if shapely.geometry.shape(scene["spatialCoverage"]).intersects(geo)
+            )
+        if args.regex:
+            import re
+            regex = re.compile(args.regex)
+            scenes = (
+                scene
+                for scene in scenes
+                if regex.search(scene["entityId"])
             )
 
         if args.command == "download-scenes":
